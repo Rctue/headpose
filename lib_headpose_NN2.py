@@ -1,9 +1,9 @@
 from math import exp
-import cv
+import cv2.cv as cv
 import numpy
 from time import clock
 from scipy.io import loadmat
-import nao
+import nao_2_0 as nao
 #import csv
 import sys
 import os
@@ -208,7 +208,7 @@ def HeadPose(image,region):
     region.width = region.width*0.6;
 
     ## filter image
-    cv.SetImageROI(gray,(region.x,region.y,region.width,region.height))
+    cv.SetImageROI(gray,(int(region.x),int(region.y),int(region.width),int(region.height)))
     intensity = float(cv.Avg(gray)[0])#calculate intensity here, otherwise info is lost
     small = cv.CreateImage((40,90),8,1)
     cv.Resize(gray,small)
@@ -258,9 +258,12 @@ def HeadPose(image,region):
 if __name__ == "__main__":
     # This will start the main program. It uses the cam attached to the computer
     # to gather the images.
-    capture = cv.CaptureFromCAM(-1)
+    capture = cv.CaptureFromCAM(0)
+    storage = cv.CreateMemStorage()
+
     yaw_ar = list([0,0,0,0,0])
     pitch_ar = list([0,0,0,0,0])
+    detected=False
 #    textfile=csv.writer(open("test.csv","wb"))
     while True:
         image = cv.QueryFrame(capture)
@@ -279,8 +282,9 @@ if __name__ == "__main__":
         if key == 27:
             break
 
+    cv.DestroyAllWindows()
     del capture
 #    del test
-    del head
+#    del head
 #    del textfile
     
