@@ -2,7 +2,7 @@
 ## There is no other module that this program calls externally
 
 from math import exp
-import cv2.cv as cv
+import cv2 as cv
 import cv2
 import numpy
 from time import clock
@@ -376,7 +376,7 @@ def HeadPose(image, isFlipped, region):
         pitch_yaw=list(PitchYaw(laplace))       # filtered and scaled image passes to NN
 
     except:
-        print "PitchYaw function not working"
+        print("PitchYaw function not working")
 
     return (pitch_yaw[0], pitch_yaw[1])         # returned pitch and yaw values from NN
 

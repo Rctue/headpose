@@ -3,10 +3,17 @@ import cv2
 import numpy
 from time import clock
 from scipy.io import loadmat
-import facedetect as face
+import facedetectRaymond
 #import csv
 import sys
 import os
+
+def msConverter(miliSeconds):
+    decimalSeconds = miliSeconds % 1000
+    seconds = (miliSeconds/1000)%60
+    minutes = (miliSeconds/(1000*60))%60
+    frameTimestamp = "%d:%d.%d" % (minutes, seconds, decimalSeconds)
+    return frameTimestamp
 
 ## Find the *.mat file.
 list_path = sys.path
@@ -34,11 +41,11 @@ class Region:
         self.width = 0
         self.height = 0
 
-def CreateImage(size, bits, channels):
+def CreateImage(size, channels=1, bits = numpy.uint8):
     if channels > 1:
-        image = numpy.zeros((size[0], size[1], channels), numpy.uint8)
+        image = numpy.zeros((size[0], size[1], channels), bits)
     else:
-        image = numpy.zeros(size, numpy.uint8)
+        image = numpy.zeros(size, bits)
     return image
 
 def tansig(number):
@@ -69,14 +76,12 @@ def PitchYaw(image,intensity):
             image_list.append(image[l,k])
     image_list.append(intensity)
 
-    image_mirrored = image.copy()
-
-    cv2.flip(image_mirrored, 1)
-    cv2.imshow("mirrored", image_mirrored)
-    cv2.imshow("small",image)
+    image_mirrored = cv2.flip(image, 1)
+    #cv2.imshow("mirrored", image_mirrored)
+    #cv2.imshow("small",image)
     #W: deze twee imshows laten geen beelden zien
 
-    key = cv2.waitKey(30)
+    #key = cv2.waitKey(0)
     
     image_list_mirrored= list()
     for k in range(0,20): # Convert image to list
@@ -201,15 +206,13 @@ def HeadPose(image,region):
     global offset_pitch
     global offset_yaw
     global test
-    save_time = clock()
 
-    gray = CreateImage(image.shape, 8, 1)
+    #gray = CreateImage(image.shape, 1)
 
-    if image.ndim != 1:
+    if image.ndim >2:
         gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
     else:
         gray = image.copy()
-    
     ## convert image to correct ratio
     ## the viola jones method returns a square region while we need a rectangular region
     region.x = region.x+(region.width*(1-0.6)/2)
@@ -220,53 +223,52 @@ def HeadPose(image,region):
     ## filter image
     #cv2.selectROI(gray, (int(region.x), int(region.y), int(region.width), int(region.height)))
     intensity = float(numpy.average(gray))#calculate intensity here, otherwise info is lost
-    #small = CreateImage((40,90),8,1)
-    small = gray.copy()
-    cv2.resize(gray, (40, 90))
+    #small = CreateImage((40,90),1)
+    small = gray[int(region.y):int(region.y + region.height),int(region.x):int(region.x + region.width)]
     small = cv2.GaussianBlur(small, (3, 3), cv2.BORDER_DEFAULT)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     small = clahe.apply(small)
     #W: Tot hier gaat alles nog goed, en zien all beelden er goed uit
-
-    lap_small_16 = CreateImage(small.shape,cv2.CV_16S,1)
-    cv2.Laplacian(small,cv2.CV_16S)
+    cv2.imshow("gray", small)
+    
+    
+    lap_small_16 = cv2.Laplacian(small,cv2.CV_16S, ksize=3)
     #W: In de bovenste twee regels gaat iets fout waardoor er geen beeld meer is
     #W: dit is volgens mij de reden dat de hele code niet meer werkt
 
-    laplace = CreateImage(lap_small_16.shape, 8,1) ## image number one
-    cv2.convertScaleAbs(lap_small_16,laplace)
-    laplace_1 = cv2.resize(laplace, (20, 45))
-    del laplace
-    laplace = laplace_1
-
-    laplace = laplace[2:laplace.shape[1]-2, 2:laplace.shape[0]-2]
+    laplace = cv2.convertScaleAbs(lap_small_16)
+    laplace = cv2.resize(laplace, (20, 45))
+    laplace3 = laplace[2:laplace.shape[0]-2, 2:laplace.shape[1]-2]
     #cv2.SetImageROI(laplace,(2,2,laplace.width-2,laplace.height-2))
-    laplace3 = cv2.resize(laplace, (20, 45)) ## image number three slighty smaller image
+
+    laplace3 = cv2.resize(laplace3, (20, 45)) ## image number three slighty smaller image
     #cv2.ResetImageROI(laplace)
-    laplace = laplace_1 #W: dit heb ik geimproviseerd.
     #ROI is lastig aan te passen en om te schrijven
 
+    #print laplace.shape
+    #cv2.imshow("laplace", laplace)
+   
 
     ## Try tp determine the yaw and pitch using NN's
     #try:
-    pitch_yaw1 = list(PitchYaw(laplace,intensity))
-    pitch_yaw3 = list(PitchYaw(laplace3,intensity))
+    pitch_yaw1 = PitchYaw(laplace,intensity)
+    pitch_yaw3 = PitchYaw(laplace3,intensity)
     #W: om de code te testen moet de try gecomment zijn, anders gaat hij altijd op de except function
 
     #except:
      #   print("PitchYaw function not working")
         
-    pitch_yaw = list([(pitch_yaw1[0]+pitch_yaw3[0])/2,(pitch_yaw1[1]+pitch_yaw3[1])/2])  
+    pitch_yaw = [(pitch_yaw1[0]+pitch_yaw3[0])/2,(pitch_yaw1[1]+pitch_yaw3[1])/2]  
 
-    try:
-        if draw:
-            #W: Ik heb geen idee waar normaal gesproken draw vandaan komt
-            #W: Het stond/staat verder nergens in de originele code
-            #W: Dus dit zou altijd niet moeten runnen en naar except gaat
-            cv2.imshow("draw", image)
-            #W: nogsteeds geen beeld
-    except:
-        pass
+##    try:
+##        if draw:
+##            #W: Ik heb geen idee waar normaal gesproken draw vandaan komt
+##            #W: Het stond/staat verder nergens in de originele code
+##            #W: Dus dit zou altijd niet moeten runnen en naar except gaan
+##            cv2.imshow("draw", image)
+##            #W: nogsteeds geen beeld
+##    except:
+##        pass
     k = cv2.waitKey(10)
     if k == 2490368:
         offset_pitch = offset_pitch+0.5
@@ -284,33 +286,52 @@ if __name__ == "__main__":
     # to gather the images.
 
 #    textfile=csv.writer(open("test.csv","wb"))
+    VIDEO_SRC = "D:\\Onderzoek\\\edittedVideos\\video6.avi"
+    capture = cv2.VideoCapture(VIDEO_SRC)
+    yaw_ar = [0, 0, 0, 0, 0]
+    pitch_ar = [0, 0, 0, 0, 0]
     while True:
-        capture = cv2.VideoCapture(0)
-        yaw_ar = list([0, 0, 0, 0, 0])
-        pitch_ar = list([0, 0, 0, 0, 0])
         detected = False
-
         ret, frame = capture.read()
-        cv2.imshow("image", frame)
-        key = cv2.waitKey(30)
-        print("test2")
-        region, detected = face.facerecog()
-
-        if detected:
-            print("test3")
-            pitch, yaw = HeadPose(frame, region)
-            yaw_ar.append(-yaw)
-            pitch_ar.append(pitch)
-            yaw_ar.pop(0)
-            pitch_ar.pop(0)
-            print((yaw_ar[0]+yaw_ar[1]+yaw_ar[2]+yaw_ar[3]+yaw_ar[4])/5
-                             ,(pitch_ar[0]+pitch_ar[1]+pitch_ar[2]+pitch_ar[3]+pitch_ar[4])/5)
-            #W: Het is verbazend dat hier iets geprint wordt, alleen het is altijd hetzelfde
-            #W: Dit is logisch want er is geen beeld om iets mee te scannen
-        if key == 27:
+        print msConverter(capture.get(cv2.CAP_PROP_POS_MSEC))
+        if not ret:
+            print "if statement"
             break
+        if ret:
+            #print("test2")
+            detected, face_list, image = facedetectRaymond.Detect(frame, False)
 
-    cv2.DestroyAllWindows()
+            if detected:
+                #print("test3")
+                pitch, yaw = HeadPose(frame, face_list[0])
+                yaw_ar.append(-yaw)
+                pitch_ar.append(pitch)
+                yaw_ar.pop(0)
+                pitch_ar.pop(0)
+                print((yaw_ar[0]+yaw_ar[1]+yaw_ar[2]+yaw_ar[3]+yaw_ar[4])/5
+                                 ,(pitch_ar[0]+pitch_ar[1]+pitch_ar[2]+pitch_ar[3]+pitch_ar[4])/5)
+                #W: Het is verbazend dat hier iets geprint wordt, alleen het is altijd hetzelfde
+                #W: Dit is logisch want er is geen beeld om iets mee te scannen
+            else:
+                frame = cv2.flip(frame,1)
+                detected, face_list, image = facedetectRaymond.Detect(frame, False)
+                if detected:
+                    # print("test3")
+                    pitch, yaw = HeadPose(frame, face_list[0])
+                    yaw_ar.append(yaw)
+                    pitch_ar.append(pitch)
+                    yaw_ar.pop(0)
+                    pitch_ar.pop(0)
+                    print((yaw_ar[0] + yaw_ar[1] + yaw_ar[2] + yaw_ar[3] + yaw_ar[4]) / 5
+                          , (pitch_ar[0] + pitch_ar[1] + pitch_ar[2] + pitch_ar[3] + pitch_ar[4]) / 5)
+
+            #cv2.imshow("image", frame)
+            key = cv2.waitKey(10)
+            if key & 0xFF == 27:
+                break
+
+    cv2.destroyAllWindows()
+    print "stop"
     del capture
 #    del test
 #    del head
